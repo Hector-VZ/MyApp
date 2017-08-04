@@ -1,97 +1,118 @@
 import { Component } from '@angular/core';
-import { NavController, AlertController, ModalController, ToastController  } from 'ionic-angular';
-import { Validators, FormBuilder, FormGroup } from '@angular/forms';
-import { AngularFireDatabase, FirebaseListObservable} from 'angularfire2/database';
+import { NavController, ToastController, Platform, AlertController } from 'ionic-angular';
+import { Camera, CameraOptions } from '@ionic-native/camera';
+import { GpsPage } from '../gps/gps';
 import * as firebase from 'firebase';
+import { AngularFireDatabase, FirebaseListObservable } from 'angularfire2/database';
+import { BleSerialPage } from '../ble-serial/ble-serial';
+import { ColorPickPage } from '../color-pick/color-pick';
 
-import { EditPage } from '../edit/edit';
 
 @Component({
   selector: 'page-home',
   templateUrl: 'home.html'
 })
 export class HomePage {
+  picture = [];
+  Preview: string = "null";
+  datapicture: FirebaseListObservable<any>;
+  storageRef = firebase.storage().ref()
 
-  info: any;
-  records: FirebaseListObservable<any>;
-   private exampleFormData: FormGroup;
-
-  constructor(public navCtrl: NavController, db: AngularFireDatabase,  public formBuilder: FormBuilder, public alertCtrl: AlertController, public modalCtrl: ModalController, public toastCtrl: ToastController) {
-       this.records =  db.list('/users')
-
-       this.exampleFormData = this.formBuilder.group({
-         name: ['', Validators.required],
-         gender: ['', Validators.required],
-         hobby: ['', Validators.required]
-       })
-
+  constructor(public navCtrl: NavController,
+    private camera: Camera,
+    private platform: Platform,
+    private toastCtrl: ToastController,
+    db: AngularFireDatabase,
+    private altr: AlertController) {
+    this.datapicture = db.list('/mediapics');
   }
+goblue(){
+  this.navCtrl.push(BleSerialPage)
+}
+goColor(){
+this.navCtrl.push(ColorPickPage)
+}
 
+  showCam() {
 
-
-  save(){
-    if(this.exampleFormData.valid){
-      this.records.push(this.exampleFormData.value)
-    }else{
-      console.error('verifique su información')
-    }   
-  }
-
-  delete(key, name){
-
-    let deleteToast = this.toastCtrl.create({
-      position: 'top',
-      message: name + 'ha sido borrado',
-      showCloseButton: true,
-      closeButtonText: 'OK'
-    });
-    let deleteAlert = this.alertCtrl.create({
-      title: 'Eliminar',
-      subTitle: 'Vas a eliminar ' + name,
-      buttons: [
-        {
-          text: 'Cancelar',
-          handler: () =>{
-
-          }
-        },
-        {
-          text: 'OK',
-          handler: () => {
-            this.records.remove(key).then(_ => deleteToast.present())
-          }
-        }
-      ]
-    })
-
-    deleteAlert.present();
-
-    console.log(key);
-    
-  }
-
-  edit(key){
-    let info = {
-      key: key
+    if (!this.platform.is("cordova")) {
+      this.mostrar_toast("Error: No estamos en un celular");
+      return;
     }
-    this.modalCtrl.create(EditPage, info).present();
+
+    const options: CameraOptions = {
+      quality: 40,
+      destinationType: this.camera.DestinationType.DATA_URL,
+      encodingType: this.camera.EncodingType.JPEG,
+      mediaType: this.camera.MediaType.PICTURE,
+      correctOrientation: true,
+      saveToPhotoAlbum: true
+    }
+
+    this.camera.getPicture(options).then((imageData) => {
+        this.Preview = imageData;
+        this.guardado();
+    }, (err) => {
+      // Handle error
+      this.mostrar_toast("Error" + err);
+      console.error("Error en la camara:", err)
+    });
+  }
+  //para traerla 
+  goGPS() {
+    this.navCtrl.push(GpsPage)
+  }
+
+  public guardado() {
+    this.altr.create({
+      title: 'Ingresar descripcion',
+      subTitle: 'Registra título y descripcion de esta imagen papu',
+      inputs: [{
+        name: 'title',
+        placeholder: 'insertar título',
+        type: 'text'
+      },
+      {
+        name: 'subtitle',
+        placeholder: 'insertar descripción',
+        type: 'text'
+      }],//let es privadamente dentro de la funcion var es mas general
+      buttons: [{
+        text: 'ok',
+        handler: data => {
+          var date = new Date();//de esta forma VALIDAMOS el guardado conjunto de la informacion para operar con ello despues
+          let uploadTask = this.storageRef.child('pictures/' + date + '.jpg').putString(this.Preview, 'base64');
+          uploadTask.then((Response) => {
+            this.storageRef.child('pictures/' + date + '.jpg').getDownloadURL().then((URL) => {
+              this.datapicture.push({
+                title: data.title,
+                subtitle: data.subtitle,
+                url: URL
+              });
+            }, (error) => {
+              console.error("Error en la extraccion del url:", error)
+            });
+          }, (error) => {
+            console.error("Error en el guardado:", error)
+          });
+        }
+      }]
+    }).present();
+
 
   }
 
-  ionViewDidLoad() {
-    console.log(this.records)
 
-
-    this.info = "nada";
-    firebase.auth().onAuthStateChanged(user => {
-      if (user.emailVerified) {
-        this.info = 'verificado'
-      } else {
-        this.info = 'no verificado'
-      }
-    })
-
-    console.log('ionViewDidLoad RegisterPage');
+  private mostrar_toast(text: string) {
+    this.toastCtrl.create({
+      message: text,
+      duration: 2500
+    }).present();
   }
+
+
 
 }
+
+
+
